@@ -26,6 +26,16 @@ initSchema();
 const db = getDb();
 console.log(`[server] DB terhubung: ${DB_PATH}`);
 
+// Database baru (mis. setelah deploy) masih kosong: buat admin & muat data awal
+if (db.prepare('SELECT COUNT(*) AS n FROM users').get().n === 0) {
+  console.log('[server] Belum ada user, menjalankan db/init...');
+  require('./db/init');
+}
+if (db.prepare('SELECT COUNT(*) AS n FROM locations').get().n === 0) {
+  console.log('[server] Tabel locations kosong, menjalankan db/seed...');
+  require('./db/seed');
+}
+
 // ---------- Setup ----------
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
