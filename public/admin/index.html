@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard Admin - Peta Paroki</title>
+<link rel="stylesheet" href="/admin/css/admin.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-left">
+    <span class="logo-sm">⛪</span>
+    <h1>Admin Peta Paroki</h1>
+  </div>
+  <div class="topbar-right">
+    <span id="userInfo" class="user-info"></span>
+    <button id="changePassBtn" class="btn btn-ghost btn-sm" title="Ubah Password">🔒 Password</button>
+    <a href="/" class="btn btn-ghost btn-sm">Lihat Peta</a>
+    <button id="logoutBtn" class="btn btn-ghost btn-sm">Keluar</button>
+  </div>
+</header>
+
+<main class="container">
+  <section class="stats" id="stats"></section>
+
+  <section class="toolbar">
+    <div class="toolbar-left">
+      <input type="search" id="searchInput" placeholder="Cari nama, alamat, pastor..." class="input-search">
+      <select id="filterType" class="input-select">
+        <option value="">Semua Tipe</option>
+        <option value="Paroki">Paroki</option>
+        <option value="Stasi">Stasi</option>
+        <option value="Katedral">Katedral</option>
+        <option value="Seminari">Seminari</option>
+        <option value="Sekolah">Sekolah</option>
+        <option value="Kapel">Kapel</option>
+        <option value="Biara">Biara</option>
+      </select>
+      <select id="filterProvince" class="input-select">
+        <option value="">Semua Provinsi</option>
+      </select>
+    </div>
+    <div class="toolbar-right">
+      <a href="/admin/edit" class="btn btn-primary">+ Tambah Lokasi</a>
+    </div>
+  </section>
+
+  <section class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Nama</th>
+          <th>Tipe</th>
+          <th>Kota</th>
+          <th>Provinsi</th>
+          <th>Keuskupan</th>
+          <th>Koordinat</th>
+          <th>Status</th>
+          <th>Aksi</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody">
+        <tr><td colspan="9" class="loading-row">Memuat data...</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <div class="pager">
+    <span id="pagerInfo"></span>
+  </div>
+</main>
+
+<!-- Modal ubah password -->
+<div id="pwModal" class="modal" style="display:none">
+  <div class="modal-content">
+    <h3>Ubah Password</h3>
+    <form id="pwForm">
+      <div class="field">
+        <label>Password Lama</label>
+        <input type="password" id="pwOld" required>
+      </div>
+      <div class="field">
+        <label>Password Baru (min 6 karakter)</label>
+        <input type="password" id="pwNew" required minlength="6">
+      </div>
+      <div id="pwError" class="alert alert-error" style="display:none"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="pwCancel">Batal</button>
+        <button type="submit" class="btn btn-primary">Simpan</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="/admin/js/admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Edit Lokasi - Peta Paroki</title>
+<link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="/admin/css/admin.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-left">
+    <a href="/admin" class="btn btn-ghost btn-sm">&larr; Kembali</a>
+    <h1 id="pageTitle">Tambah Lokasi</h1>
+  </div>
+  <div class="topbar-right">
+    <a href="/" class="btn btn-ghost btn-sm">Lihat Peta</a>
+    <button id="logoutBtn" class="btn btn-ghost btn-sm">Keluar</button>
+  </div>
+</header>
+
+<main class="container-edit">
+  <form id="editForm" class="form-grid">
+    <div class="form-col">
+      <div class="field">
+        <label>Nama Lokasi *</label>
+        <input type="text" name="name" required maxlength="200">
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>Tipe *</label>
+          <select name="type" required>
+            <option value="Paroki">Paroki</option>
+            <option value="Stasi">Stasi</option>
+            <option value="Katedral">Katedral</option>
+            <option value="Seminari">Seminari</option>
+            <option value="Sekolah">Sekolah</option>
+            <option value="Kapel">Kapel</option>
+            <option value="Biara">Biara</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Status</label>
+          <select name="is_active">
+            <option value="1">Aktif</option>
+            <option value="0">Nonaktif</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Pastor / Pengelola</label>
+        <input type="text" name="pastor" maxlength="200">
+      </div>
+
+      <div class="field">
+        <label>Alamat</label>
+        <textarea name="address" rows="2"></textarea>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>Kota / Kabupaten</label>
+          <input type="text" name="city">
+        </div>
+        <div class="field">
+          <label>Provinsi</label>
+          <input type="text" name="province">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Keuskupan</label>
+        <input type="text" name="diocese" placeholder="Contoh: Keuskupan Agung Semarang">
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>Telepon</label>
+          <input type="text" name="phone">
+        </div>
+        <div class="field">
+          <label>Email</label>
+          <input type="email" name="email">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Website</label>
+        <input type="text" name="website" placeholder="contoh: paroki.example.com">
+      </div>
+
+      <div class="field">
+        <label>Jadwal Misa</label>
+        <textarea name="misa" rows="3" placeholder="Contoh: Minggu: 07.00 &amp; 09.00 · Sabtu: 17.30 · Harian: 05.30"></textarea>
+        <small class="hint">Pisahkan sesi dengan " · " (spasi-titik tengah-spasi).</small>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>Sumber Data</label>
+          <input type="text" name="source" placeholder="manual / jadwalmisa.id / ekatolik.com">
+        </div>
+        <div class="field">
+          <label>URL Sumber</label>
+          <input type="text" name="source_url">
+        </div>
+      </div>
+    </div>
+
+    <div class="form-col">
+      <div class="field-row">
+        <div class="field">
+          <label>Latitude *</label>
+          <input type="number" name="lat" step="0.0000001" min="-90" max="90" required>
+        </div>
+        <div class="field">
+          <label>Longitude *</label>
+          <input type="number" name="lng" step="0.0000001" min="-180" max="180" required>
+        </div>
+      </div>
+
+      <div class="hint" style="margin-bottom:8px">
+        💡 Klik di peta untuk mengatur koordinat, atau tarik marker.
+      </div>
+
+      <div id="mapPicker" style="height:400px;border-radius:8px;border:1px solid var(--border)"></div>
+
+      <div class="picker-actions">
+        <button type="button" class="btn btn-ghost btn-sm" id="btnUseCurrentLoc">📍 Pakai Lokasi Saya</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="btnGeocode">🔍 Cari via Alamat</button>
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <div id="formError" class="alert alert-error" style="display:none"></div>
+      <div id="formSuccess" class="alert alert-success" style="display:none"></div>
+      <button type="button" class="btn btn-danger" id="btnDelete" style="display:none">🗑️ Hapus</button>
+      <a href="/admin" class="btn btn-ghost">Batal</a>
+      <button type="submit" class="btn btn-primary">💾 Simpan</button>
+    </div>
+  </form>
+</main>
+
+<script src="/vendor/leaflet/leaflet.js"></script>
+<script src="/admin/js/edit.js"></script>
+</body>
+</html>
