@@ -14,11 +14,11 @@
     "scrape:imankatolik": "node scripts/scrape-imankatolik.js"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
-    "better-sqlite3": "^11.3.0",
+    "better-sqlite3": "^12.11.1",
     "better-sqlite3-session-store": "^0.1.0",
     "cheerio": "^1.0.0",
     "compression": "^1.7.4",

@@ -216,7 +216,7 @@ console.log('OK');
 ## Troubleshooting
 
 **❌ `better-sqlite3` install error di Hostinger**
-- Butuh Node ≥ 18 dan build tools. Cek versi Node di panel.
+- Butuh Node ≥ 20 (better-sqlite3 v12 punya prebuilt binary untuk Node 20–26, jadi tidak perlu Python/build tools). Cek versi Node di panel.
 - Jika gagal, coba `npm rebuild better-sqlite3` di SSH.
 
 **❌ Radius search return 0**
@@ -231,7 +231,7 @@ console.log('OK');
 
 ## Tech Stack
 
-- **Backend:** Node.js 18+, Express 4, better-sqlite3, bcryptjs, express-session
+- **Backend:** Node.js 20+, Express 4, better-sqlite3, bcryptjs, express-session
 - **Frontend:** Vanilla JS, Leaflet 1.9.4
 - **DB:** SQLite (WAL mode, custom `haversine()` SQL function)
 - **Scraping:** node-fetch, cheerio
