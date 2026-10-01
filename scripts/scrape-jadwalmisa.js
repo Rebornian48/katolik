@@ -1,118 +1,107 @@
 /**
  * Scraper untuk jadwalmisa.id
  *
- * PENDEKATAN:
- *   1. Ambil halaman index (daftar paroki per keuskupan)
- *   2. Untuk setiap paroki, ambil detail page → parsing nama, alamat, jadwal misa
- *   3. Geocode alamat pakai Nominatim untuk mendapat koordinat
- *   4. Upsert ke SQLite
+ * STRUKTUR SITUS (dicek Oktober 2026):
+ *   - Situs Next.js. Daftar semua gereja ada di /gereja-sitemap.xml dengan URL
+ *     /cari/<provinsi>/<kabupaten-kota>/<slug-gereja>.
+ *   - Setiap halaman menyimpan datanya sebagai JSON di <script id="__NEXT_DATA__">.
+ *     props.pageProps.data berisi SEMUA gereja di kabupaten/kota tersebut
+ *     (nama, alamat, jadwal misa), jadi cukup 1 request per kabupaten/kota.
+ *   - Tidak ada koordinat (hanya link Google Maps pendek), jadi tetap perlu geocoding.
  *
- * CATATAN:
- *   - Struktur HTML jadwalmisa.id bisa berubah — sesuaikan selector di bawah bila perlu.
- *   - Kecepatan dibatasi ke ~1-2 req/detik supaya sopan.
- *
- * Jalankan: node scripts/scrape-jadwalmisa.js
- * Debug 1 keuskupan saja:  node scripts/scrape-jadwalmisa.js --limit=10
+ * Jalankan:           node scripts/scrape-jadwalmisa.js
+ * Uji 10 gereja:      node scripts/scrape-jadwalmisa.js --limit=10
+ * Lihat hasil parse:  node scripts/scrape-jadwalmisa.js --limit=10 --dry-run
  */
 
-const cheerio = require('cheerio');
-const { fetchText, geocode, upsertLocation, logScrapeStart, logScrapeFinish, SLEEP } = require('./lib/scraper-common');
+const {
+  fetchText, cleanAddress, splitChurchName, guessType, importRecords, parseArgs, SLEEP,
+} = require('./lib/scraper-common');
 
 const SOURCE = 'jadwalmisa.id';
 const BASE = 'https://jadwalmisa.id';
-const LIMIT = parseInt((process.argv.find(a => a.startsWith('--limit=')) || '').split('=')[1] || '0', 10);
+const { limit, dryRun } = parseArgs();
 
-async function fetchDioceseList() {
-  console.log(`[jadwalmisa] Ambil daftar keuskupan...`);
-  // Halaman keuskupan biasanya berupa link ke /gereja?keuskupan=xxx atau /paroki
-  // Sesuaikan URL ini setelah inspect situs; ini contoh struktur umum.
-  const html = await fetchText(BASE + '/paroki');
-  const $ = cheerio.load(html);
+/** Kelompokkan URL gereja dari sitemap per kabupaten/kota. */
+async function fetchRegencyPages() {
+  console.log('[jadwalmisa] Ambil sitemap gereja...');
+  const xml = await fetchText(BASE + '/gereja-sitemap.xml');
+  const urls = [...xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g)].map((m) => m[1]);
 
-  const parishes = [];
-  // TODO: sesuaikan selector berikut dengan struktur asli jadwalmisa.id
-  $('a[href*="/paroki/"]').each((_, el) => {
-    const href = $(el).attr('href');
-    const name = $(el).text().trim();
-    if (href && name) {
-      parishes.push({
-        url: href.startsWith('http') ? href : BASE + href,
-        name,
-      });
-    }
-  });
-
-  console.log(`[jadwalmisa] Ditemukan ${parishes.length} paroki di index`);
-  return parishes;
+  const byRegency = new Map();
+  for (const url of urls) {
+    const m = url.match(/\/cari\/([^/]+)\/([^/]+)\/[^/]+$/);
+    if (m && !byRegency.has(`${m[1]}/${m[2]}`)) byRegency.set(`${m[1]}/${m[2]}`, url);
+  }
+  console.log(`[jadwalmisa] ${urls.length} gereja di ${byRegency.size} kabupaten/kota`);
+  return [...byRegency.entries()].map(([path, url]) => ({ path, url }));
 }
 
-async function scrapeParishDetail(url) {
-  const html = await fetchText(url);
-  const $ = cheerio.load(html);
+function readNextData(html) {
+  const m = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+  if (!m) throw new Error('__NEXT_DATA__ tidak ditemukan (struktur situs berubah?)');
+  return JSON.parse(m[1]).props.pageProps;
+}
 
-  // TODO: sesuaikan selector - ini template umum
-  const name = $('h1, .paroki-name').first().text().trim();
-  const address = $('[itemprop="address"], .alamat, .address').first().text().trim();
-  const diocese = $('.keuskupan, [data-keuskupan]').first().text().trim();
-  const misaRows = [];
+/** "Misa Minggu: 06:00, 09:00, 17:00 · Misa Sabtu: 17:00" */
+function formatSchedules(schedules) {
+  return (schedules || [])
+    .filter((s) => s.status !== false && s.title)
+    .map((s) => {
+      const times = (s.time || []).map((t) => (t.start || '').trim()).filter(Boolean);
+      return times.length ? `${s.title.trim()}: ${times.join(', ')}` : null;
+    })
+    .filter(Boolean)
+    .join(' · ') || null;
+}
 
-  $('.jadwal-misa li, .schedule-item').each((_, el) => {
-    const t = $(el).text().trim();
-    if (t) misaRows.push(t);
-  });
+function toRecord(church, path) {
+  const regency = church.regencyName || church.regency?.name || null;
+  const province = church.provinceName || church.province?.name || null;
+  const { core, place } = splitChurchName(church.name);
+  const street = cleanAddress(church.address);
 
   return {
-    name,
-    address,
-    diocese: diocese || null,
-    misa: misaRows.length ? misaRows.join(' · ') : null,
-    source: SOURCE,
-    source_url: url,
+    name: church.name.trim(),
+    type: guessType(church.name),
+    address: church.address || null,
+    city: regency,
+    province,
+    phone: church.phone || null,
+    email: church.email || null,
+    misa: formatSchedules(church.schedules),
+    source_url: `${BASE}/cari/${path}/${church.slug}`,
+    geoQueries: [
+      { q: `Gereja Katolik ${core} ${place || regency}`, church: true },
+      { q: `Gereja ${core} ${regency}`, church: true },
+      { q: church.name.replace(/\s+[-–]\s+/, ' '), church: true },
+      street, // terakhir: posisi jalan, lebih kasar tapi masih mendekati
+    ],
+    geoCheck: { name: core, region: `${regency || ''} ${place}` },
   };
 }
 
 async function main() {
-  const logId = logScrapeStart(SOURCE);
-  const stats = { added: 0, updated: 0, skipped: 0 };
+  const regencies = await fetchRegencyPages();
+  const records = [];
 
-  try {
-    let parishes = await fetchDioceseList();
-    if (LIMIT > 0) parishes = parishes.slice(0, LIMIT);
-
-    for (const [i, p] of parishes.entries()) {
-      console.log(`[${i + 1}/${parishes.length}] ${p.name}`);
-      try {
-        const detail = await scrapeParishDetail(p.url);
-        if (!detail.name) { stats.skipped++; continue; }
-
-        // Geocode
-        const geo = await geocode(detail.address + ', ' + detail.name);
-        if (!geo) { stats.skipped++; console.log('  (skip: gagal geocode)'); continue; }
-
-        detail.lat = geo.lat;
-        detail.lng = geo.lng;
-        detail.type = 'Paroki';
-
-        const r = upsertLocation(detail);
-        if (r.added) stats.added++;
-        else if (r.updated) stats.updated++;
-        else stats.skipped++;
-
-        await SLEEP(1500);  // sopan ke server
-      } catch (e) {
-        console.warn('  Error:', e.message);
-        stats.skipped++;
-      }
+  for (const [i, { path, url }] of regencies.entries()) {
+    if (limit && records.length >= limit) break;
+    try {
+      const { data } = readNextData(await fetchText(url));
+      const churches = (data || []).filter((c) => c.status !== false && c.name);
+      console.log(`[${i + 1}/${regencies.length}] ${path}: ${churches.length} gereja`);
+      for (const c of churches) records.push(toRecord(c, path));
+    } catch (e) {
+      console.warn(`  Error ${path}:`, e.message);
     }
-
-    logScrapeFinish(logId, stats);
-    console.log('==============================');
-    console.log(`Selesai. Added: ${stats.added}, Updated: ${stats.updated}, Skipped: ${stats.skipped}`);
-  } catch (e) {
-    logScrapeFinish(logId, stats, e);
-    console.error('FATAL:', e);
-    process.exit(1);
+    await SLEEP(1500); // sopan ke server
   }
+
+  await importRecords(SOURCE, limit ? records.slice(0, limit) : records, { dryRun });
 }
 
-main();
+main().catch((e) => {
+  console.error('FATAL:', e);
+  process.exit(1);
+});

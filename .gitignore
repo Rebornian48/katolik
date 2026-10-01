@@ -39,3 +39,6 @@ sessions/
 
 # Hostinger specific
 .htaccess.bak
+
+# Hasil scraper (daftar lokasi yang tidak ditemukan)
+scripts/output/

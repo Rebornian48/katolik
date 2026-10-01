@@ -5,10 +5,15 @@
  * - Upsert ke SQLite
  */
 
+const fs = require('fs');
+const path = require('path');
 const fetch = require('node-fetch');
 const { getDb, initSchema } = require('../../db/db');
 
-const DEFAULT_UA = 'peta-paroki-scraper/2.0 (+contact: your-email@example.com)';
+// Nominatim mewajibkan kontak yang valid dan menolak (HTTP 403) alamat contoh
+// seperti your-email@example.com. Bisa diganti: SCRAPER_CONTACT=email-anda@domain.com
+const CONTACT = process.env.SCRAPER_CONTACT || 'https://github.com/Rebornian48/katolik';
+const DEFAULT_UA = `peta-paroki-scraper/2.0 (+${CONTACT})`;
 const SLEEP = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function fetchText(url, opts = {}) {
@@ -23,6 +28,8 @@ async function fetchText(url, opts = {}) {
       const res = await fetch(url, { headers, signal: controller.signal });
       clearTimeout(timer);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // Situs lama (mis. imankatolik.or.id) memakai encoding latin1, bukan UTF-8
+      if (opts.encoding) return (await res.buffer()).toString(opts.encoding);
       return await res.text();
     } catch (e) {
       if (attempt >= maxRetry) throw e;
@@ -34,19 +41,129 @@ async function fetchText(url, opts = {}) {
 }
 
 async function geocode(query, opts = {}) {
+  const [hit] = await searchNominatim(query, 1, opts);
+  return hit ? toGeo(hit) : null;
+}
+
+const toGeo = (hit) => ({ lat: parseFloat(hit.lat), lng: parseFloat(hit.lon), display: hit.display_name });
+
+async function searchNominatim(query, limit, opts = {}) {
   // Rate-limit Nominatim: 1 req/detik
-  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=id&q=${encodeURIComponent(query)}`;
+  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=${limit}&countrycodes=id&q=${encodeURIComponent(query)}`;
   const headers = {
     'User-Agent': opts.userAgent || DEFAULT_UA,
     'Accept': 'application/json',
     'Accept-Language': 'id,en',
   };
   const res = await fetch(url, { headers });
+  if (res.status === 403 || res.status === 429) {
+    // Diblokir / kena rate limit: percuma lanjut, hentikan seluruh proses
+    const err = new Error(`Nominatim menolak request (HTTP ${res.status}). Cek SCRAPER_CONTACT dan jangan jalankan beberapa scraper sekaligus.`);
+    err.fatal = true;
+    throw err;
+  }
   if (!res.ok) throw new Error('Geocoding gagal: HTTP ' + res.status);
   const arr = await res.json();
   await SLEEP(1100); // hormati kebijakan Nominatim
-  if (!arr.length) return null;
-  return { lat: parseFloat(arr[0].lat), lng: parseFloat(arr[0].lon), display: arr[0].display_name };
+  return arr;
+}
+
+const isChurchResult = (r) =>
+  r.type === 'place_of_worship' || /gereja|church|katolik|katholik|katedral|kapel|paroki/i.test(r.display_name);
+
+const STOP_WORDS = new Set([
+  'gereja', 'katolik', 'katholik', 'paroki', 'stasi', 'kapel', 'santo', 'santa', 'santu',
+  'dari', 'yang', 'dan', 'kota', 'kabupaten', 'kab', 'jalan', 'flores', 'papua',
+]);
+
+/** Kata-kata khas (≥4 huruf, bukan kata umum), dinormalisasi: "St. Yosef" -> ['yosef'] */
+function keyWords(text) {
+  return (text || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .split(/[^a-z]+/)
+    .filter((w) => w.length >= 4 && !STOP_WORDS.has(w));
+}
+
+// Cocokkan 5 huruf awal supaya variasi ejaan ringan tetap lolos (Theresia/Therese)
+const mentions = (display, word) => display.includes(word.slice(0, 5));
+const sameWord = (a, b) => a.slice(0, 5) === b.slice(0, 5);
+
+/**
+ * Coba beberapa query berurutan, kembalikan hasil pertama yang lolos pengecekan.
+ * Item: { q, church: true } -> hasil harus gereja, memuat SEMUA kata khas `check.name`,
+ *                              minimal satu kata `check.region`, dan nama gereja di OSM
+ *                              tidak boleh punya kata khas lain di luar nama & wilayah
+ *       'string'            -> query alamat; cukup memuat salah satu kata `check.region`
+ * Tanpa pengecekan ini Nominatim sering mengembalikan gereja lain bernama mirip
+ * (mis. "Hati Kudus" -> "Bunda Hati Kudus") atau kota yang salah.
+ * Alamat lengkap + nama hampir selalu gagal di Nominatim; pola yang paling
+ * sering berhasil adalah "Gereja Katolik <nama pelindung> <kota>".
+ */
+async function geocodeFirst(queries, check = {}) {
+  const nameWords = keyWords(check.name);
+  const regionWords = keyWords(check.region);
+  const inRegion = (d) => !regionWords.length || regionWords.some((w) => mentions(d, w));
+  const allowed = [...nameWords, ...regionWords];
+  const sameChurch = (r) => {
+    const d = keyWords(r.display_name).join(' ');
+    const osmName = keyWords(r.name || r.display_name.split(',')[0]);
+    return isChurchResult(r)
+      && nameWords.every((w) => mentions(d, w))
+      && osmName.every((w) => allowed.some((a) => sameWord(a, w)));
+  };
+
+  const seen = new Set();
+  for (const item of queries) {
+    const { q, church } = typeof item === 'string' ? { q: item } : item;
+    const query = (q || '').replace(/\s+/g, ' ').trim();
+    if (!query || seen.has(query)) continue;
+    seen.add(query);
+
+    const hit = (await searchNominatim(query, 5)).find(
+      (r) => inRegion(keyWords(r.display_name).join(' ')) && (!church || sameChurch(r)),
+    );
+    if (hit) return { ...toGeo(hit), query };
+  }
+  return null;
+}
+
+/** Buang RT/RW, kode pos, dan "Kec." supaya alamat lebih mudah dikenali Nominatim. */
+function cleanAddress(address) {
+  if (!address) return '';
+  return address
+    .replace(/\bRT\.?\s*\d+\s*\/?\s*RW\.?\s*\d+\b,?/gi, '')
+    .replace(/\b(RT|RW)\.?\s*\d+\b,?/gi, '')
+    .replace(/\b\d{5}\b/g, '')
+    .replace(/\bKec\.\s*/gi, '')
+    .replace(/\s*,\s*(,\s*)+/g, ', ')
+    .replace(/\s+/g, ' ')
+    .replace(/^[,\s]+|[,\s]+$/g, '');
+}
+
+/**
+ * Pecah nama gereja jadi nama pelindung & nama tempat, untuk query geocoding.
+ * "Gereja Santa Clara - Bekasi Utara"  -> { core: 'Santa Clara', place: 'Bekasi Utara' }
+ * "Paroki Kristus Raja"                -> { core: 'Kristus Raja', place: '' }
+ */
+function splitChurchName(name) {
+  const [left, ...rest] = (name || '').split(/\s+[-–]\s+/);
+  const core = left
+    .replace(/\b(gereja|katolik|katholik|paroki|stasi|kapel)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return { core: core || left.trim(), place: rest.join(' ').trim() };
+}
+
+/** Tebak tipe lokasi dari nama / slug. */
+function guessType(text) {
+  const t = (text || '').toLowerCase();
+  if (/katedral/.test(t)) return 'Katedral';
+  if (/\bstasi\b/.test(t)) return 'Stasi';
+  if (/\bkapel\b/.test(t)) return 'Kapel';
+  if (/\b(biara|pertapaan|susteran|frateran|bruderan)\b/.test(t)) return 'Biara';
+  if (/\bseminari\b/.test(t)) return 'Seminari';
+  return 'Paroki';
 }
 
 initSchema();
@@ -56,6 +173,11 @@ const findExisting = db.prepare(`
   SELECT id FROM locations
   WHERE (name = @name AND ABS(lat - @lat) < 0.005 AND ABS(lng - @lng) < 0.005)
      OR (source_url IS NOT NULL AND source_url = @source_url)
+     -- sumber berbeda menamai gereja yang sama secara berbeda; anggap lokasi
+     -- dalam ~150 m dengan tipe sama sebagai gereja yang sama
+     OR (type = @type AND ABS(lat - @lat) < 0.0015 AND ABS(lng - @lng) < 0.0015)
+  ORDER BY (source_url IS @source_url) DESC, (name = @name) DESC
+  LIMIT 1
 `);
 
 const insertStmt = db.prepare(`
@@ -140,4 +262,72 @@ function logScrapeFinish(logId, stats, error = null) {
   );
 }
 
-module.exports = { fetchText, geocode, upsertLocation, logScrapeStart, logScrapeFinish, SLEEP, db };
+/** Baca --limit=N dan --dry-run dari argumen command line. */
+function parseArgs(argv = process.argv) {
+  const limitArg = argv.find((a) => a.startsWith('--limit='));
+  return {
+    limit: limitArg ? parseInt(limitArg.split('=')[1], 10) || 0 : 0,
+    dryRun: argv.includes('--dry-run'),
+  };
+}
+
+/**
+ * Loop bersama untuk semua scraper: geocode tiap record lalu upsert ke DB.
+ * Setiap record membawa `geoQueries` dan `geoCheck` (lihat geocodeFirst). Dengan --dry-run
+ * record hanya dicetak, tanpa geocoding dan tanpa menulis ke DB.
+ */
+async function importRecords(source, records, { dryRun = false } = {}) {
+  if (dryRun) {
+    for (const { geoQueries, geoCheck, ...r } of records) {
+      console.log(JSON.stringify(r), '\n  geocode:', geoQueries, '\n  cek:', geoCheck);
+    }
+    console.log(`[${source}] Dry run: ${records.length} record, tidak ada yang disimpan.`);
+    return;
+  }
+
+  const logId = logScrapeStart(source);
+  const stats = { added: 0, updated: 0, skipped: 0 };
+  const notFound = [];
+  try {
+    for (const [i, { geoQueries, geoCheck, ...rec }] of records.entries()) {
+      console.log(`[${i + 1}/${records.length}] ${rec.name}`);
+      try {
+        const geo = await geocodeFirst(geoQueries, geoCheck);
+        if (!geo) {
+          stats.skipped++;
+          notFound.push(rec);
+          console.log('  (skip: lokasi tidak ditemukan di OpenStreetMap)');
+          continue;
+        }
+        const r = upsertLocation({ ...rec, lat: geo.lat, lng: geo.lng, source });
+        if (r.added) stats.added++;
+        else if (r.updated) stats.updated++;
+        else stats.skipped++;
+        console.log(`  ${r.added ? 'baru' : r.updated ? 'update' : 'skip'} <- "${geo.query}"`);
+      } catch (e) {
+        if (e.fatal) throw e;
+        console.warn('  Error:', e.message);
+        stats.skipped++;
+      }
+    }
+    logScrapeFinish(logId, stats);
+    console.log('==============================');
+    console.log(`Selesai. Added=${stats.added} Updated=${stats.updated} Skipped=${stats.skipped}`);
+    if (notFound.length) {
+      // Lokasi yang tidak ketemu bisa ditambahkan manual lewat halaman admin
+      const file = path.join(__dirname, '..', 'output', `${source}-tidak-ditemukan.json`);
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(notFound, null, 2));
+      console.log(`${notFound.length} lokasi tidak ditemukan, daftarnya di: ${path.relative(process.cwd(), file)}`);
+    }
+  } catch (e) {
+    logScrapeFinish(logId, stats, e);
+    throw e;
+  }
+}
+
+module.exports = {
+  parseArgs, importRecords,
+  fetchText, geocode, geocodeFirst, cleanAddress, splitChurchName, guessType,
+  upsertLocation, logScrapeStart, logScrapeFinish, SLEEP, db,
+};

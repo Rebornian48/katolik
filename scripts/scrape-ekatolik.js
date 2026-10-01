@@ -1,88 +1,108 @@
 /**
  * Scraper untuk ekatolik.com/jadwal-misa
- * Pola sama dengan jadwalmisa.id.
  *
- * Jalankan: node scripts/scrape-ekatolik.js
+ * STRUKTUR SITUS (dicek Oktober 2026):
+ *   - Daftar gereja ada di /jadwal-misa/sitemap.xml. URL /jadwal-misa/<slug> adalah
+ *     halaman gereja; /jadwal-misa/kota/<kota> hanya halaman daftar (dilewati).
+ *   - Halaman gereja dirender di server:
+ *       <header><p>Gereja Katolik di Medan</p><h1>Paroki Kristus Raja</h1></header>
+ *       <article>
+ *         <h2>Misa Harian</h2> <p>Pagi 6.00</p> ...
+ *         <dl><div><dt>Alamat</dt><dd>...</dd></div><div><dt>Telepon</dt>...</dl>
+ *       </article>
+ *
+ * Jalankan:           node scripts/scrape-ekatolik.js
+ * Uji 10 gereja:      node scripts/scrape-ekatolik.js --limit=10
+ * Lihat hasil parse:  node scripts/scrape-ekatolik.js --limit=10 --dry-run
  */
 
 const cheerio = require('cheerio');
-const { fetchText, geocode, upsertLocation, logScrapeStart, logScrapeFinish, SLEEP } = require('./lib/scraper-common');
+const {
+  fetchText, cleanAddress, splitChurchName, guessType, importRecords, parseArgs, SLEEP,
+} = require('./lib/scraper-common');
 
 const SOURCE = 'ekatolik.com';
 const BASE = 'https://ekatolik.com';
-const INDEX_URL = BASE + '/jadwal-misa';
-const LIMIT = parseInt((process.argv.find(a => a.startsWith('--limit=')) || '').split('=')[1] || '0', 10);
+const { limit, dryRun } = parseArgs();
 
 async function fetchList() {
-  const html = await fetchText(INDEX_URL);
-  const $ = cheerio.load(html);
-  const items = [];
-  // TODO: sesuaikan selector setelah inspect halaman asli
-  $('a[href*="/gereja/"], a[href*="/paroki/"]').each((_, el) => {
-    const href = $(el).attr('href');
-    const name = $(el).text().trim();
-    if (href && name) {
-      items.push({ url: href.startsWith('http') ? href : BASE + href, name });
-    }
-  });
-  return items;
+  console.log('[ekatolik] Ambil sitemap jadwal misa...');
+  const xml = await fetchText(BASE + '/jadwal-misa/sitemap.xml');
+  const urls = [...xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g)]
+    .map((m) => m[1])
+    .filter((u) => /\/jadwal-misa\/[^/]+$/.test(u)); // buang /jadwal-misa/kota/<kota>
+  console.log(`[ekatolik] ${urls.length} halaman gereja`);
+  return urls;
 }
 
+const text = ($el) => $el.text().replace(/\s+/g, ' ').trim();
+
 async function scrapeDetail(url) {
-  const html = await fetchText(url);
-  const $ = cheerio.load(html);
+  const $ = cheerio.load(await fetchText(url));
+  const name = text($('h1').first());
+  if (!name) return null;
+
+  const city = text($('header p').first()).replace(/^gereja katolik di\s+/i, '') || null;
+
+  const fields = {};
+  $('article dl > div').each((_, el) => {
+    fields[text($(el).find('dt')).toLowerCase()] = text($(el).find('dd'));
+  });
+
+  const misa = $('article h2')
+    .map((_, h2) => {
+      const times = $(h2)
+        .nextUntil('h2', 'p')
+        .filter((_, p) => !$(p).find('em').length) // catatan "Jadwal misa dapat berubah..."
+        .map((_, p) => text($(p)))
+        .get()
+        .filter(Boolean);
+      return times.length ? `${text($(h2))}: ${times.join(', ')}` : null;
+    })
+    .get()
+    .join(' · ');
+
+  const address = fields.alamat || null;
+  const { core } = splitChurchName(name);
   return {
-    name: $('h1').first().text().trim(),
-    address: $('.address, .alamat, [itemprop="streetAddress"]').first().text().trim(),
-    phone: $('.phone, .telepon, [itemprop="telephone"]').first().text().trim() || null,
-    diocese: $('.keuskupan, [data-keuskupan]').first().text().trim() || null,
-    misa: $('.jadwal-misa, .misa-list').text().trim().replace(/\s+/g, ' ') || null,
-    source: SOURCE,
+    name,
+    type: guessType(name + ' ' + url),
+    address,
+    city,
+    phone: fields.telepon || null,
+    email: fields.email || null,
+    website: fields.website || null,
+    misa: misa || null,
     source_url: url,
+    geoQueries: [
+      { q: `Gereja Katolik ${core} ${city || ''}`, church: true },
+      { q: `${name} ${city || ''}`, church: true },
+      cleanAddress(address),
+    ],
+    geoCheck: { name: core, region: city },
   };
 }
 
 async function main() {
-  const logId = logScrapeStart(SOURCE);
-  const stats = { added: 0, updated: 0, skipped: 0 };
+  let urls = await fetchList();
+  if (limit) urls = urls.slice(0, limit);
 
-  try {
-    let items = await fetchList();
-    if (LIMIT > 0) items = items.slice(0, LIMIT);
-    console.log(`[ekatolik] ${items.length} item ditemukan`);
-
-    for (const [i, item] of items.entries()) {
-      console.log(`[${i + 1}/${items.length}] ${item.name}`);
-      try {
-        const detail = await scrapeDetail(item.url);
-        if (!detail.name) { stats.skipped++; continue; }
-
-        const geo = await geocode(detail.address + ', ' + detail.name);
-        if (!geo) { stats.skipped++; continue; }
-
-        detail.lat = geo.lat;
-        detail.lng = geo.lng;
-        detail.type = 'Paroki';
-
-        const r = upsertLocation(detail);
-        if (r.added) stats.added++;
-        else if (r.updated) stats.updated++;
-        else stats.skipped++;
-
-        await SLEEP(1500);
-      } catch (e) {
-        console.warn('  Error:', e.message);
-        stats.skipped++;
-      }
+  const records = [];
+  for (const [i, url] of urls.entries()) {
+    try {
+      const rec = await scrapeDetail(url);
+      console.log(`[${i + 1}/${urls.length}] ${rec ? rec.name : '(tanpa nama, dilewati)'}`);
+      if (rec) records.push(rec);
+    } catch (e) {
+      console.warn(`  Error ${url}:`, e.message);
     }
-
-    logScrapeFinish(logId, stats);
-    console.log(`Selesai. Added=${stats.added} Updated=${stats.updated} Skipped=${stats.skipped}`);
-  } catch (e) {
-    logScrapeFinish(logId, stats, e);
-    console.error('FATAL:', e);
-    process.exit(1);
+    await SLEEP(1500); // sopan ke server
   }
+
+  await importRecords(SOURCE, records, { dryRun });
 }
 
-main();
+main().catch((e) => {
+  console.error('FATAL:', e);
+  process.exit(1);
+});
