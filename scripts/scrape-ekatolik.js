@@ -94,6 +94,7 @@ async function main() {
       console.log(`[${i + 1}/${urls.length}] ${rec ? rec.name : '(tanpa nama, dilewati)'}`);
       if (rec) records.push(rec);
     } catch (e) {
+      if (e.fatal) throw e;
       console.warn(`  Error ${url}:`, e.message);
     }
     await SLEEP(1500); // sopan ke server

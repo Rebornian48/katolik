@@ -168,6 +168,7 @@ async function main() {
           try {
             pages.push({ url, $: cheerio.load(await fetchPage(url)) });
           } catch (e) {
+            if (e.fatal) throw e;
             console.warn(`  Error ${url}:`, e.message);
           }
         }
@@ -182,6 +183,7 @@ async function main() {
       }
       console.log(`[${i + 1}/${dioceses.length}] ${diocese.name}: ${count} paroki`);
     } catch (e) {
+      if (e.fatal) throw e;
       console.warn(`  Error ${diocese.name}:`, e.message);
     }
     await SLEEP(1200); // sopan ke server

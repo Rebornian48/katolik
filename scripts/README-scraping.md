@@ -68,7 +68,12 @@ Kalau Nominatim menolak request (403/429), scraper langsung berhenti dengan pesa
 Deteksi duplikat (record dianggap gereja yang sama bila):
 - `source_url` sama (menjalankan ulang scraper yang sama), atau
 - nama sama dan koordinat berdekatan (< ~500 m), atau
-- tipe sama dan koordinat sangat dekat (< ~150 m), untuk gereja yang sama dari sumber berbeda
+- tipe sama dan koordinat sangat dekat (< ~150 m), atau
+- dalam radius ~1 km dan nama pelindungnya cocok, misalnya "Katedral Santo Petrus Bandung" dengan
+  "Katedral St Petrus - Bandung". Sumber berbeda sering memberi koordinat yang selisih ratusan meter.
+
+Gereja yang nama pelindungnya berbeda antar-sumber (mis. seed "Paroki Baciro (Santo Yusup)" vs
+jadwalmisa "Gereja Kristus Raja - Baciro") tidak bisa dikenali otomatis dan perlu digabung manual.
 
 Jika duplikat, hanya field yang **masih kosong di DB** yang diisi dari data baru (via
 `COALESCE`), sehingga data hasil edit di admin tidak ditimpa.

@@ -93,6 +93,7 @@ async function main() {
       console.log(`[${i + 1}/${regencies.length}] ${path}: ${churches.length} gereja`);
       for (const c of churches) records.push(toRecord(c, path));
     } catch (e) {
+      if (e.fatal) throw e;
       console.warn(`  Error ${path}:`, e.message);
     }
     await SLEEP(1500); // sopan ke server

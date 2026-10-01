@@ -16,28 +16,47 @@ const CONTACT = process.env.SCRAPER_CONTACT || 'https://github.com/Rebornian48/k
 const DEFAULT_UA = `peta-paroki-scraper/2.0 (+${CONTACT})`;
 const SLEEP = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function fetchText(url, opts = {}) {
-  const maxRetry = opts.maxRetry ?? 3;
-  const timeout = opts.timeout ?? 30000;
-  const headers = { 'User-Agent': DEFAULT_UA, 'Accept': 'text/html,application/json', ...(opts.headers || {}) };
+// Jeda antar percobaan ulang (total ±7 menit) supaya internet yang putus
+// sebentar tidak membuat data terlewat diam-diam.
+const RETRY_WAITS = [2000, 10000, 30000, 90000, 300000];
 
-  for (let attempt = 1; attempt <= maxRetry; attempt++) {
+/**
+ * fetch dengan retry untuk gangguan jaringan & error server (5xx).
+ * Error 4xx dikembalikan apa adanya (tidak di-retry). Kalau jaringan tetap
+ * gagal setelah semua percobaan, lempar error `fatal` supaya proses berhenti
+ * alih-alih menandai ratusan lokasi sebagai gagal.
+ */
+async function fetchWithRetry(url, options = {}, timeout = 30000) {
+  for (let attempt = 0; ; attempt++) {
+    let problem;
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeout);
-      const res = await fetch(url, { headers, signal: controller.signal });
+      const res = await fetch(url, { ...options, signal: controller.signal });
       clearTimeout(timer);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      // Situs lama (mis. imankatolik.or.id) memakai encoding latin1, bukan UTF-8
-      if (opts.encoding) return (await res.buffer()).toString(opts.encoding);
-      return await res.text();
+      if (res.status < 500) return res;
+      problem = `HTTP ${res.status}`;
     } catch (e) {
-      if (attempt >= maxRetry) throw e;
-      const wait = 1000 * attempt;
-      console.warn(`  [retry] ${url}: ${e.message}, coba lagi dalam ${wait}ms`);
-      await SLEEP(wait);
+      problem = e.message || String(e);
     }
+    if (attempt >= RETRY_WAITS.length) {
+      const err = new Error(`Koneksi gagal terus-menerus (${problem}): ${url}. Cek koneksi internet.`);
+      err.fatal = true;
+      throw err;
+    }
+    const wait = RETRY_WAITS[attempt];
+    console.warn(`  [retry] ${problem}, coba lagi dalam ${wait / 1000} detik`);
+    await SLEEP(wait);
   }
+}
+
+async function fetchText(url, opts = {}) {
+  const headers = { 'User-Agent': DEFAULT_UA, 'Accept': 'text/html,application/json', ...(opts.headers || {}) };
+  const res = await fetchWithRetry(url, { headers }, opts.timeout ?? 30000);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  // Situs lama (mis. imankatolik.or.id) memakai encoding latin1, bukan UTF-8
+  if (opts.encoding) return (await res.buffer()).toString(opts.encoding);
+  return await res.text();
 }
 
 async function geocode(query, opts = {}) {
@@ -55,7 +74,7 @@ async function searchNominatim(query, limit, opts = {}) {
     'Accept': 'application/json',
     'Accept-Language': 'id,en',
   };
-  const res = await fetch(url, { headers });
+  const res = await fetchWithRetry(url, { headers });
   if (res.status === 403 || res.status === 429) {
     // Diblokir / kena rate limit: percuma lanjut, hentikan seluruh proses
     const err = new Error(`Nominatim menolak request (HTTP ${res.status}). Cek SCRAPER_CONTACT dan jangan jalankan beberapa scraper sekaligus.`);
@@ -207,6 +226,50 @@ const updateStmt = db.prepare(`
   WHERE id = @id
 `);
 
+const findNearby = db.prepare(`
+  SELECT id, name, city, lat, lng FROM locations
+  WHERE lat BETWEEN @lat - 0.01 AND @lat + 0.01
+    AND lng BETWEEN @lng - 0.01 AND @lng + 0.01
+`);
+
+const distanceKm = (a, b) =>
+  Math.hypot((a.lat - b.lat) * 111, (a.lng - b.lng) * 111 * Math.cos((a.lat * Math.PI) / 180));
+
+const GENERIC_WORDS = new Set(['katedral', 'cathedral', 'church', 'catholic']);
+
+/** Kata pelindung dari nama: tanpa kata umum dan tanpa nama kota/kabupaten. */
+function patronWords(loc, otherCity) {
+  const cityWords = new Set([...keyWords(loc.city), ...keyWords(otherCity)]);
+  return keyWords(loc.name).filter((w) => !GENERIC_WORDS.has(w) && !cityWords.has(w));
+}
+
+/**
+ * Apakah dua lokasi berdekatan kemungkinan gereja yang sama? Sumber berbeda
+ * sering memberi koordinat yang selisih 200 m - 1 km dan nama yang berbeda
+ * ("Katedral Santo Petrus Bandung" vs "Katedral St Petrus - Bandung"), jadi
+ * dibandingkan kata pelindungnya: kata pelindung nama yang lebih pendek harus
+ * ada semua di nama yang lain. Satu kata yang cocok ("Maria") hanya diterima
+ * bila nama lainnya juga pendek, supaya "Santa Maria" tidak tergabung dengan
+ * "Santa Perawan Maria Ratu Rosari".
+ */
+function isSameChurch(a, b) {
+  const wa = patronWords(a, b.city);
+  const wb = patronWords(b, a.city);
+  const [short, long] = wa.length <= wb.length ? [wa, wb] : [wb, wa];
+  if (!short.length) return false;
+  if (short.length === 1 && long.length > 2) return false;
+  return short.every((w) => long.some((x) => x.slice(0, 5) === w.slice(0, 5)));
+}
+
+/** Cari gereja yang sama dalam radius ~1 km berdasarkan kemiripan nama. */
+function findSameChurchNearby(loc) {
+  return findNearby
+    .all(loc)
+    .map((r) => ({ ...r, km: distanceKm(loc, r) }))
+    .filter((r) => r.km <= 1 && isSameChurch(loc, r))
+    .sort((x, y) => x.km - y.km)[0];
+}
+
 function upsertLocation(row) {
   const clean = {
     name: row.name?.trim(),
@@ -228,7 +291,7 @@ function upsertLocation(row) {
 
   if (!clean.name || clean.lat == null || clean.lng == null) return { skipped: true, reason: 'no coord/name' };
 
-  const existing = findExisting.get(clean);
+  const existing = findExisting.get(clean) || findSameChurchNearby(clean);
   if (existing) {
     updateStmt.run({ ...clean, id: existing.id });
     return { updated: true, id: existing.id };
@@ -331,5 +394,5 @@ async function importRecords(source, records, { dryRun = false } = {}) {
 module.exports = {
   parseArgs, importRecords,
   fetchText, geocode, geocodeFirst, cleanAddress, splitChurchName, guessType,
-  upsertLocation, logScrapeStart, logScrapeFinish, SLEEP, db,
+  upsertLocation, isSameChurch, logScrapeStart, logScrapeFinish, SLEEP, db,
 };
