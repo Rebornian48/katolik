@@ -84,6 +84,27 @@ npm run scrape:jadwalmisa
 
 Data langsung masuk ke database yang dipakai website, tanpa perlu restart.
 
+### Alternatif: scraping di lokal, lalu pindahkan lokasinya ke server
+
+Jangan upload file `.sqlite` lokal untuk menimpa database server, karena akun admin
+dan session di server ikut hilang. Pindahkan **lokasinya saja**:
+
+```bash
+# Di komputer lokal, setelah scraping selesai
+npm run locations:export
+# -> scripts/output/locations.json
+```
+
+Upload `locations.json` ke server (File Manager atau `scp`), misalnya ke `~/data/`, lalu lewat SSH
+dari folder aplikasi (dengan `DB_PATH` yang sama seperti website):
+
+```bash
+npm run locations:import -- ~/data/locations.json
+```
+
+Import aman dijalankan saat website sedang berjalan dan aman diulang. Lokasi yang sudah ada
+di server hanya diisi field yang masih kosong, sehingga edit dari admin tidak tertimpa.
+
 ## Etika Scraping
 
 - **Rate limit:** jeda 1,2–1,5 detik per request ke situs sumber dan ±1,1 detik ke

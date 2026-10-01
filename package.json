@@ -11,7 +11,9 @@
     "db:reset": "node db/init.js --reset && node db/seed.js",
     "scrape:jadwalmisa": "node scripts/scrape-jadwalmisa.js",
     "scrape:ekatolik": "node scripts/scrape-ekatolik.js",
-    "scrape:imankatolik": "node scripts/scrape-imankatolik.js"
+    "scrape:imankatolik": "node scripts/scrape-imankatolik.js",
+    "locations:export": "node scripts/locations-export.js",
+    "locations:import": "node scripts/locations-import.js"
   },
   "engines": {
     "node": ">=20.0.0"

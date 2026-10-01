@@ -190,18 +190,20 @@ const insertStmt = db.prepare(`
   )
 `);
 
+// Nilai yang sudah ada menang: hanya field kosong yang diisi, supaya hasil edit
+// di halaman admin tidak tertimpa saat scraper/import dijalankan ulang.
 const updateStmt = db.prepare(`
   UPDATE locations SET
-    pastor = COALESCE(@pastor, pastor),
-    address = COALESCE(@address, address),
-    city = COALESCE(@city, city),
-    province = COALESCE(@province, province),
-    diocese = COALESCE(@diocese, diocese),
-    phone = COALESCE(@phone, phone),
-    email = COALESCE(@email, email),
-    website = COALESCE(@website, website),
-    misa = COALESCE(@misa, misa),
-    source_url = COALESCE(@source_url, source_url)
+    pastor = COALESCE(pastor, @pastor),
+    address = COALESCE(address, @address),
+    city = COALESCE(city, @city),
+    province = COALESCE(province, @province),
+    diocese = COALESCE(diocese, @diocese),
+    phone = COALESCE(phone, @phone),
+    email = COALESCE(email, @email),
+    website = COALESCE(website, @website),
+    misa = COALESCE(misa, @misa),
+    source_url = COALESCE(source_url, @source_url)
   WHERE id = @id
 `);
 
