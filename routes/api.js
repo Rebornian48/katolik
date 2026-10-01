@@ -176,7 +176,15 @@ router.post('/locations', requireApiAuth, (req, res) => {
   if (errors.length) return res.status(400).json({ error: 'Validasi gagal', details: errors });
 
   const db = getDb();
-  const result = db
+  // Lokasi dari antrian (/admin/antrian): tandai entrinya selesai di transaksi yang sama
+  const queueId = req.body.queue_id ? parseInt(req.body.queue_id, 10) : null;
+  if (queueId) {
+    const entry = db.prepare('SELECT status FROM location_queue WHERE id = ?').get(queueId);
+    if (!entry) return res.status(404).json({ error: 'Entri antrian tidak ditemukan' });
+    if (entry.status === 'done') return res.status(409).json({ error: 'Entri antrian ini sudah dijadikan lokasi' });
+  }
+
+  const insert = () => db
     .prepare(`
       INSERT INTO locations (
         name, type, pastor, address, city, province, diocese,
@@ -204,6 +212,15 @@ router.post('/locations', requireApiAuth, (req, res) => {
       source_url: data.source_url || null,
       is_active: data.is_active ?? 1,
     });
+
+  const result = db.transaction(() => {
+    const r = insert();
+    if (queueId) {
+      db.prepare("UPDATE location_queue SET status = 'done', location_id = ? WHERE id = ?")
+        .run(r.lastInsertRowid, queueId);
+    }
+    return r;
+  })();
 
   const created = db.prepare('SELECT * FROM locations WHERE id = ?').get(result.lastInsertRowid);
   res.status(201).json(created);

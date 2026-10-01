@@ -22,6 +22,8 @@
 
 <main class="container-edit">
   <form id="editForm" class="form-grid">
+    <div id="queueBanner" class="queue-banner" style="display:none"></div>
+
     <div class="form-col">
       <div class="field">
         <label>Nama Lokasi *</label>
@@ -111,6 +113,15 @@
     </div>
 
     <div class="form-col">
+      <div class="field">
+        <label for="coordPaste">Tempel koordinat / link Google Maps</label>
+        <div class="coord-paste">
+          <input type="text" id="coordPaste" placeholder="-6.1754, 106.8272  atau  https://www.google.com/maps/...">
+          <button type="button" class="btn btn-ghost btn-sm" id="btnPaste">Pakai</button>
+        </div>
+        <small class="hint">Di Google Maps: klik kanan titik gereja, lalu klik angka koordinat paling atas untuk menyalinnya.</small>
+      </div>
+
       <div class="field-row">
         <div class="field">
           <label>Latitude *</label>
@@ -131,6 +142,7 @@
       <div class="picker-actions">
         <button type="button" class="btn btn-ghost btn-sm" id="btnUseCurrentLoc">📍 Pakai Lokasi Saya</button>
         <button type="button" class="btn btn-ghost btn-sm" id="btnGeocode">🔍 Cari via Alamat</button>
+        <a class="btn btn-ghost btn-sm" id="btnGmaps" target="_blank" rel="noopener" href="https://www.google.com/maps">🗺️ Cari di Google Maps</a>
       </div>
     </div>
 
@@ -138,8 +150,10 @@
       <div id="formError" class="alert alert-error" style="display:none"></div>
       <div id="formSuccess" class="alert alert-success" style="display:none"></div>
       <button type="button" class="btn btn-danger" id="btnDelete" style="display:none">🗑️ Hapus</button>
-      <a href="/admin" class="btn btn-ghost">Batal</a>
-      <button type="submit" class="btn btn-primary">💾 Simpan</button>
+      <button type="button" class="btn btn-ghost" id="btnSkip" style="display:none" title="Sembunyikan dari antrian (mis. sudah tutup / bukan gereja)">⏭️ Lewati</button>
+      <a href="/admin" class="btn btn-ghost" id="btnCancel">Batal</a>
+      <button type="submit" class="btn btn-primary" id="btnSave">💾 Simpan</button>
+      <button type="submit" class="btn btn-primary" id="btnSaveNext" style="display:none">💾 Simpan &amp; berikutnya</button>
     </div>
   </form>
 </main>

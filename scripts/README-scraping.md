@@ -53,9 +53,36 @@ Kalau Nominatim menolak request (403/429), scraper langsung berhenti dengan pesa
   kalau nama gereja dan kota/wilayahnya cocok. Contohnya, "Hati Kudus" tidak boleh jatuh
   ke "Bunda Hati Kudus", dan gereja di Sumatera tidak boleh jatuh ke Surabaya. Akibatnya,
   lebih banyak yang dilewati, tetapi pin yang masuk dapat dipercaya.
-- **Lokasi yang tidak ditemukan disimpan** di `scripts/output/<sumber>-tidak-ditemukan.json`
-  (nama, alamat, kota, jadwal misa). Tambahkan manual lewat halaman admin
-  (`/admin`) dengan koordinat dari Google Maps.
+- **Lokasi yang tidak ditemukan otomatis masuk Antrian Lokasi** (`/admin/antrian`), dan juga
+  disimpan di `scripts/output/<sumber>-tidak-ditemukan.json`. Lihat bagian
+  [Antrian Lokasi](#antrian-lokasi-tanpa-koordinat).
+
+## Antrian Lokasi (tanpa koordinat)
+
+Gereja yang tidak ditemukan di OpenStreetMap ditampung di tabel `location_queue` dan
+dikerjakan manual lewat **Admin → 📋 Antrian Lokasi** (`/admin/antrian`):
+
+1. Klik **📍 Tentukan Lokasi**. Form terisi otomatis (nama, alamat, jadwal misa, sumber),
+   dan peta diarahkan ke kotanya.
+2. Tentukan titiknya: klik di peta, pakai **🔍 Cari via Alamat**, atau buka
+   **🗺️ Cari di Google Maps**, klik kanan titik gereja, salin koordinatnya, lalu tempel di kolom
+   *Tempel koordinat* (link Google Maps juga bisa ditempel langsung).
+3. **💾 Simpan & berikutnya**: lokasi dibuat, entri antrian ditandai selesai, dan entri berikutnya
+   langsung terbuka. Pakai **⏭️ Lewati** untuk gereja yang sudah tutup atau bukan gereja.
+   Entri yang dilewati bisa dikembalikan dari filter *Dilewati*.
+
+Gereja yang sama dari beberapa sumber digabung jadi satu entri (nama pelindung dan kota cocok).
+Kalau scraper berikutnya berhasil menemukan lokasinya, entrinya otomatis ditandai selesai.
+
+Untuk memasukkan file `*-tidak-ditemukan.json` dari run sebelumnya ke antrian:
+
+```bash
+npm run queue:import
+# atau file tertentu:
+npm run queue:import -- path/ke/jadwalmisa.id-tidak-ditemukan.json
+```
+
+Aman dijalankan berulang kali: entri yang sudah ada hanya dilengkapi.
 
 ## Cara Kerja
 

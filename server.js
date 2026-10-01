@@ -15,6 +15,7 @@ const Database = require('better-sqlite3');
 const { getDb, initSchema, DB_PATH } = require('./db/db');
 const apiRouter = require('./routes/api');
 const adminRouter = require('./routes/admin');
+const queueRouter = require('./routes/queue');
 const { requireAuth } = require('./middleware/auth');
 
 const app = express();
@@ -95,6 +96,7 @@ app.use(
 );
 
 // ---------- Routes ----------
+app.use('/api/queue', queueRouter);
 app.use('/api', apiRouter);
 app.use('/admin', adminRouter);
 
@@ -110,6 +112,9 @@ app.get('/admin', requireAuth, (req, res) => {
 });
 app.get('/admin/edit/:id?', requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin', 'edit.html'));
+});
+app.get('/admin/antrian', requireAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin', 'queue.html'));
 });
 
 // Health check

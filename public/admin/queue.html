@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Antrian Lokasi - Peta Paroki</title>
+<link rel="stylesheet" href="/admin/css/admin.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-left">
+    <a href="/admin" class="btn btn-ghost btn-sm">&larr; Dashboard</a>
+    <h1>Antrian Lokasi</h1>
+  </div>
+  <div class="topbar-right">
+    <span id="userInfo" class="user-info"></span>
+    <a href="/" class="btn btn-ghost btn-sm">Lihat Peta</a>
+    <button id="logoutBtn" class="btn btn-ghost btn-sm">Keluar</button>
+  </div>
+</header>
+
+<main class="container">
+  <p class="hint queue-intro">
+    Gereja dari jadwalmisa.id, ekatolik.com, dan imankatolik.or.id yang belum punya koordinat
+    (tidak ditemukan di OpenStreetMap). Klik <strong>📍 Tentukan Lokasi</strong>, cari titiknya di peta,
+    lalu simpan. Yang punya alamat dan jadwal misa ditampilkan lebih dulu.
+  </p>
+
+  <section class="stats" id="stats"></section>
+
+  <section class="toolbar">
+    <div class="toolbar-left">
+      <input type="search" id="searchInput" placeholder="Cari nama, alamat, kota, keuskupan..." class="input-search">
+      <select id="filterStatus" class="input-select">
+        <option value="pending">Menunggu</option>
+        <option value="skipped">Dilewati</option>
+        <option value="done">Selesai</option>
+      </select>
+      <select id="filterSource" class="input-select">
+        <option value="">Semua Sumber</option>
+      </select>
+    </div>
+  </section>
+
+  <section class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Nama</th>
+          <th>Tipe</th>
+          <th>Kota / Keuskupan</th>
+          <th>Sumber</th>
+          <th>Jadwal</th>
+          <th>Aksi</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody">
+        <tr><td colspan="6" class="loading-row">Memuat data...</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <div class="pager">
+    <button id="prevBtn" class="btn btn-ghost btn-sm">&larr; Sebelumnya</button>
+    <span id="pagerInfo"></span>
+    <button id="nextBtn" class="btn btn-ghost btn-sm">Berikutnya &rarr;</button>
+  </div>
+</main>
+
+<script src="/admin/js/queue.js"></script>
+</body>
+</html>

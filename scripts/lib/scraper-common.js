@@ -93,6 +93,9 @@ const isChurchResult = (r) =>
 const STOP_WORDS = new Set([
   'gereja', 'katolik', 'katholik', 'paroki', 'stasi', 'kapel', 'santo', 'santa', 'santu',
   'dari', 'yang', 'dan', 'kota', 'kabupaten', 'kab', 'jalan', 'flores', 'papua',
+  // nama wilayah besar: terlalu umum untuk menandakan kota yang sama
+  'utara', 'selatan', 'barat', 'timur', 'tengah', 'tenggara', 'kalimantan', 'sumatera',
+  'sulawesi', 'jawa', 'nusa', 'provinsi', 'daerah', 'istimewa', 'khusus', 'ibukota',
 ]);
 
 /** Kata-kata khas (≥4 huruf, bukan kata umum), dinormalisasi: "St. Yosef" -> ['yosef'] */
@@ -252,12 +255,14 @@ function patronWords(loc, otherCity) {
  * bila nama lainnya juga pendek, supaya "Santa Maria" tidak tergabung dengan
  * "Santa Perawan Maria Ratu Rosari".
  */
-function isSameChurch(a, b) {
+function isSameChurch(a, b, { strict = false } = {}) {
   const wa = patronWords(a, b.city);
   const wb = patronWords(b, a.city);
   const [short, long] = wa.length <= wb.length ? [wa, wb] : [wb, wa];
   if (!short.length) return false;
-  if (short.length === 1 && long.length > 2) return false;
+  // Tanpa koordinat (antrian) tidak ada batas radius 1 km, jadi satu kata
+  // ("Santo Yusup" vs "Santo Yusup Banaran") hanya cukup bila keduanya identik.
+  if (short.length === 1 && long.length > (strict ? 1 : 2)) return false;
   return short.every((w) => long.some((x) => x.slice(0, 5) === w.slice(0, 5)));
 }
 
@@ -292,12 +297,90 @@ function upsertLocation(row) {
   if (!clean.name || clean.lat == null || clean.lng == null) return { skipped: true, reason: 'no coord/name' };
 
   const existing = findExisting.get(clean) || findSameChurchNearby(clean);
+  let result;
   if (existing) {
     updateStmt.run({ ...clean, id: existing.id });
-    return { updated: true, id: existing.id };
+    result = { updated: true, id: existing.id };
+  } else {
+    result = { added: true, id: insertStmt.run(clean).lastInsertRowid };
   }
-  const result = insertStmt.run(clean);
-  return { added: true, id: result.lastInsertRowid };
+  // Lokasi yang dulu masuk antrian kini ditemukan -> antriannya selesai
+  if (clean.source_url) markQueueDone.run({ source_url: clean.source_url, location_id: result.id });
+  return result;
+}
+
+// ---------- Antrian lokasi tanpa koordinat ----------
+
+const markQueueDone = db.prepare(`
+  UPDATE location_queue SET status = 'done', location_id = @location_id
+  WHERE source_url = @source_url AND status != 'done'
+`);
+
+const QUEUE_FIELDS = ['pastor', 'address', 'city', 'province', 'diocese', 'phone', 'email', 'website', 'misa'];
+
+const fillQueueBlanks = db.prepare(`
+  UPDATE location_queue SET ${QUEUE_FIELDS.map((f) => `${f} = COALESCE(${f}, @${f})`).join(', ')}
+  WHERE id = @id
+`);
+
+const insertQueue = db.prepare(`
+  INSERT INTO location_queue (name, type, ${QUEUE_FIELDS.join(', ')}, source, source_url)
+  VALUES (@name, @type, ${QUEUE_FIELDS.map((f) => '@' + f).join(', ')}, @source, @source_url)
+`);
+
+/**
+ * Masukkan lokasi tanpa koordinat ke antrian (/admin/antrian).
+ * - Lewati yang sudah ada di peta (source_url sama, atau nama persis sama).
+ * - Entri antrian dengan source_url sama hanya dilengkapi field kosongnya.
+ * - Gereja yang sama dari sumber lain (nama pelindung cocok & kota sama)
+ *   digabung ke entri yang sudah ada, bukan dibuat entri baru.
+ */
+function addToQueue(rows) {
+  const stats = { added: 0, merged: 0, located: 0, skipped: 0 };
+  const queued = db.prepare('SELECT id, name, city, source, source_url FROM location_queue').all();
+
+  // Indeks per kata kota supaya pencarian gereja yang sama tidak O(n²)
+  const byCity = new Map();
+  const index = (q) => keyWords(q.city).forEach((w) => {
+    if (!byCity.has(w)) byCity.set(w, []);
+    byCity.get(w).push(q);
+  });
+  queued.forEach(index);
+  const byUrl = new Map(queued.filter((q) => q.source_url).map((q) => [q.source_url, q]));
+
+  const inLocations = db.prepare(`
+    SELECT 1 FROM locations WHERE (source_url IS NOT NULL AND source_url = @source_url) OR name = @name LIMIT 1
+  `);
+
+  db.transaction(() => {
+    for (const raw of rows) {
+      const row = {
+        name: raw.name?.trim(),
+        type: raw.type || 'Paroki',
+        source: raw.source || null,
+        source_url: raw.source_url || null,
+        ...Object.fromEntries(QUEUE_FIELDS.map((f) => [f, raw[f] || null])),
+      };
+      if (!row.name) { stats.skipped++; continue; }
+      if (inLocations.get(row)) { stats.located++; continue; }
+
+      const same = (row.source_url && byUrl.get(row.source_url))
+        || keyWords(row.city).flatMap((w) => byCity.get(w) || [])
+          // entri dari sumber yang sama pasti gereja berbeda (source_url-nya beda)
+          .find((q) => q.source !== row.source && isSameChurch(row, q, { strict: true }));
+      if (same) {
+        fillQueueBlanks.run({ ...row, id: same.id });
+        stats.merged++;
+        continue;
+      }
+
+      const q = { id: insertQueue.run(row).lastInsertRowid, name: row.name, city: row.city, source: row.source, source_url: row.source_url };
+      index(q);
+      if (q.source_url) byUrl.set(q.source_url, q);
+      stats.added++;
+    }
+  })();
+  return stats;
 }
 
 function logScrapeStart(source) {
@@ -379,11 +462,13 @@ async function importRecords(source, records, { dryRun = false } = {}) {
     console.log('==============================');
     console.log(`Selesai. Added=${stats.added} Updated=${stats.updated} Skipped=${stats.skipped}`);
     if (notFound.length) {
-      // Lokasi yang tidak ketemu bisa ditambahkan manual lewat halaman admin
+      // Lokasi yang tidak ketemu masuk antrian /admin/antrian untuk ditentukan manual
+      const q = addToQueue(notFound.map((r) => ({ ...r, source })));
+      console.log(`${notFound.length} lokasi tidak ditemukan -> antrian admin: ${q.added} baru, ${q.merged} digabung, ${q.located} sudah ada di peta`);
       const file = path.join(__dirname, '..', 'output', `${source}-tidak-ditemukan.json`);
       fs.mkdirSync(path.dirname(file), { recursive: true });
-      fs.writeFileSync(file, JSON.stringify(notFound, null, 2));
-      console.log(`${notFound.length} lokasi tidak ditemukan, daftarnya di: ${path.relative(process.cwd(), file)}`);
+      fs.writeFileSync(file, JSON.stringify(notFound.map((r) => ({ ...r, source })), null, 2));
+      console.log(`Daftarnya juga disimpan di: ${path.relative(process.cwd(), file)}`);
     }
   } catch (e) {
     logScrapeFinish(logId, stats, e);
@@ -394,5 +479,5 @@ async function importRecords(source, records, { dryRun = false } = {}) {
 module.exports = {
   parseArgs, importRecords,
   fetchText, geocode, geocodeFirst, cleanAddress, splitChurchName, guessType,
-  upsertLocation, isSameChurch, logScrapeStart, logScrapeFinish, SLEEP, db,
+  upsertLocation, isSameChurch, addToQueue, logScrapeStart, logScrapeFinish, SLEEP, db,
 };

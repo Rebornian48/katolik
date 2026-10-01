@@ -74,6 +74,15 @@ pwForm.addEventListener('submit', async (e) => {
 });
 
 // ---------- Data ----------
+async function loadQueueCount() {
+  const res = await fetch('/api/queue?limit=1');
+  if (!res.ok) return;
+  const { counts } = await res.json();
+  if (counts.pending) {
+    document.getElementById('queueLink').textContent = `📋 Antrian Lokasi (${counts.pending.toLocaleString('id-ID')})`;
+  }
+}
+
 async function loadMeta() {
   const res = await fetch('/api/meta');
   const meta = await res.json();
@@ -194,4 +203,5 @@ function escapeAttr(str) {
   if (!user) return;
   await loadMeta();
   await loadLocations();
+  loadQueueCount();
 })();

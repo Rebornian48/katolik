@@ -43,6 +43,40 @@ BEGIN
   UPDATE locations SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
 END;
 
+-- Antrian lokasi tanpa koordinat (mis. hasil scraper yang tidak ditemukan
+-- di OpenStreetMap). Admin menentukan titiknya di peta lewat /admin/antrian;
+-- setelah disimpan entri ditandai 'done' dan location_id menunjuk lokasinya.
+CREATE TABLE IF NOT EXISTS location_queue (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL DEFAULT 'Paroki' CHECK(type IN ('Paroki', 'Stasi', 'Seminari', 'Sekolah', 'Katedral', 'Kapel', 'Biara')),
+  pastor TEXT,
+  address TEXT,
+  city TEXT,
+  province TEXT,
+  diocese TEXT,
+  phone TEXT,
+  email TEXT,
+  website TEXT,
+  misa TEXT,
+  source TEXT,
+  source_url TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'done', 'skipped')),
+  location_id INTEGER REFERENCES locations(id) ON DELETE SET NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_queue_source_url ON location_queue(source_url) WHERE source_url IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_queue_status ON location_queue(status);
+
+CREATE TRIGGER IF NOT EXISTS trg_queue_updated_at
+AFTER UPDATE ON location_queue
+FOR EACH ROW
+BEGIN
+  UPDATE location_queue SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+END;
+
 -- Tabel user admin
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
