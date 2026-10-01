@@ -22,9 +22,9 @@ let map, marker;
 function initMap(lat = -2.5, lng = 118, zoom = 5) {
   map = L.map('mapPicker').setView([lat, lng], zoom);
 
-  L.tileLayer('https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-    attribution: '© OSM © CARTO',
-    maxZoom: 20,
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '© Esri',
+    maxZoom: 18,
   }).addTo(map);
 
   marker = L.marker([lat, lng], { draggable: true }).addTo(map);

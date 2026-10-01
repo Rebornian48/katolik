@@ -53,9 +53,6 @@ app.use(
           "'self'",
           'data:',
           'blob:',
-          'https://*.tile.openstreetmap.org',
-          'https://tile.openstreetmap.org',
-          'https://*.basemaps.cartocdn.com',
           'https://server.arcgisonline.com',
         ],
         connectSrc: ["'self'", 'https://nominatim.openstreetmap.org'],
@@ -130,7 +127,11 @@ app.get('/health', (req, res) => {
 const staticOptions = {
   maxAge: '1d',
   setHeaders: (res, filePath) => {
-    if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
+    // HTML/CSS/JS aplikasi selalu dicek ulang (304 bila tidak berubah) supaya
+    // setelah deploy pengunjung tidak memakai CSS lama dengan JS baru.
+    // Library vendor (Leaflet) tetap di-cache 1 hari.
+    const isVendor = filePath.includes(`${path.sep}vendor${path.sep}`);
+    if (/\.(html|css|js)$/.test(filePath) && !isVendor) res.setHeader('Cache-Control', 'no-cache');
   },
 };
 app.use(express.static(path.join(__dirname, 'public'), staticOptions));

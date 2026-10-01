@@ -5,6 +5,7 @@
 :root {
   --bg: #f5f5f0;
   --surface: #ffffff;
+  --surface-2: #f1f5f9;
   --text: #1a1a1a;
   --text-secondary: #555;
   --accent: #2563eb;
@@ -23,6 +24,7 @@
   :root:not([data-theme="light"]) {
     --bg: #121212;
     --surface: #1e1e1e;
+    --surface-2: #2b2f36;
     --text: #e8e8e8;
     --text-secondary: #aaa;
     --accent: #60a5fa;
@@ -35,6 +37,7 @@
 :root[data-theme="dark"] {
   --bg: #121212;
   --surface: #1e1e1e;
+  --surface-2: #2b2f36;
   --text: #e8e8e8;
   --text-secondary: #aaa;
   --accent: #60a5fa;
@@ -399,10 +402,27 @@ body {
 }
 
 /* ---------- Popup ---------- */
+/* Leaflet memaksa popup putih + teks abu gelap; samakan dengan tema supaya
+   kotak jadwal misa & koordinat tetap terbaca di mode gelap. */
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+}
+
 .leaflet-popup-content-wrapper {
   border-radius: 10px !important;
   box-shadow: 0 4px 20px var(--shadow) !important;
   padding: 0 !important;
+  border: 1px solid var(--border);
+}
+
+.leaflet-container a.leaflet-popup-close-button {
+  color: var(--text-secondary);
+}
+
+.leaflet-container a.leaflet-popup-close-button:hover {
+  color: var(--text);
 }
 
 .leaflet-popup-content {
@@ -423,6 +443,22 @@ body {
   padding: 3px 8px;
   border-radius: 4px;
   margin-bottom: 8px;
+  /* Warna tipe yang terang (mis. kuning Kapel) digelapkan supaya terbaca di latar putih */
+  color: color-mix(in srgb, var(--badge) 60%, black);
+  background: color-mix(in srgb, var(--badge) 12%, transparent);
+}
+
+/* Sebaliknya, warna tipe yang gelap (mis. biru Paroki) diterangkan di latar gelap */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .popup-card .popup-badge {
+    color: color-mix(in srgb, var(--badge) 55%, white);
+    background: color-mix(in srgb, var(--badge) 25%, transparent);
+  }
+}
+
+:root[data-theme="dark"] .popup-card .popup-badge {
+  color: color-mix(in srgb, var(--badge) 55%, white);
+  background: color-mix(in srgb, var(--badge) 25%, transparent);
 }
 
 .popup-card h3 {
@@ -447,7 +483,8 @@ body {
 }
 
 .popup-card .popup-misa {
-  background: var(--bg);
+  background: var(--surface-2);
+  color: var(--text);
   padding: 8px 10px;
   border-radius: 6px;
   margin-top: 8px;
@@ -457,7 +494,7 @@ body {
 .popup-card .popup-coords {
   font-size: 11px;
   color: var(--text-secondary);
-  background: var(--bg);
+  background: var(--surface-2);
   padding: 4px 8px;
   border-radius: 4px;
   margin-top: 8px;

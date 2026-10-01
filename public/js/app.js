@@ -44,32 +44,16 @@ const radiusInfo = document.getElementById('radiusInfo');
 const map = L.map('map', { zoomControl: false }).setView([-2.5, 118], 5);
 L.control.zoom({ position: 'topright' }).addTo(map);
 
-const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>', maxZoom: 19,
-});
-const cartoLight = L.tileLayer('https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-  attribution: '© OSM © CARTO', maxZoom: 20,
-});
-const cartoDark = L.tileLayer('https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-  attribution: '© OSM © CARTO', maxZoom: 20,
-});
-const cartoVoyager = L.tileLayer('https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-  attribution: '© OSM © CARTO', maxZoom: 20,
+const esriTopo = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', {
+  attribution: '© Esri', maxZoom: 18,
 });
 const esriSat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
   attribution: '© Esri', maxZoom: 18,
 });
-const esriTopo = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', {
-  attribution: '© Esri', maxZoom: 18,
-});
-cartoVoyager.addTo(map);
+esriTopo.addTo(map);
 L.control.layers({
-  "🗺️ CartoDB Voyager": cartoVoyager,
-  "☀️ CartoDB Terang":  cartoLight,
-  "🌙 CartoDB Gelap":   cartoDark,
-  "🌍 OpenStreetMap":   osm,
-  "🛰️ Esri Satelit":    esriSat,
   "⛰️ Esri Topografi":  esriTopo,
+  "🛰️ Esri Satelit":    esriSat,
 }, null, { position: 'topright', collapsed: true }).addTo(map);
 
 // ---------- Marker & popup ----------
@@ -87,7 +71,7 @@ function popupHTML(loc) {
   const dist = loc.distance_km != null
     ? `<div class="popup-row" style="color:var(--accent);font-weight:600">📏 ${loc.distance_km.toFixed(1)} km dari Anda</div>` : '';
   let html = `<div class="popup-card">
-    <span class="popup-badge" style="background:${cfg.color}15;color:${cfg.color}">${cfg.icon} ${loc.type}</span>
+    <span class="popup-badge" style="--badge:${cfg.color}">${cfg.icon} ${loc.type}</span>
     <h3>${escapeHtml(loc.name)}</h3>
     ${dist}
     ${loc.pastor ? `<div class="popup-row"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span>${escapeHtml(loc.pastor)}</span></div>` : ''}
