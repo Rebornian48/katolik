@@ -117,6 +117,11 @@ app.get('/admin/antrian', requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin', 'queue.html'));
 });
 
+// Halaman peta
+app.get('/peta', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'peta.html'));
+});
+
 // Health check
 app.get('/health', (req, res) => {
   const total = db.prepare('SELECT COUNT(*) AS n FROM locations WHERE is_active = 1').get().n;

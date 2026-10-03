@@ -3,62 +3,30 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Peta Paroki & Gereja - Katolik Indonesia</title>
-  <meta name="description" content="Peta interaktif Paroki, Stasi, Katedral, Seminari, dan Sekolah Katolik di seluruh Indonesia.">
+  <title>Katolik Indonesia</title>
+  <meta name="description" content="Portal informasi Katolik Indonesia - Peta Paroki, Gereja, dan lainnya.">
   <meta name="theme-color" content="#2563eb">
-
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9B%AA%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
-  <link rel="stylesheet" href="/css/styles.css">
+  <link rel="stylesheet" href="/css/home.css">
 </head>
 <body>
-<div class="app">
-  <aside class="sidebar" id="sidebar">
-    <div class="sidebar-header">
-      <h1>⛪ Peta Paroki &amp; Gereja</h1>
-      <p>Katolik Indonesia · <span id="totalCount">memuat...</span> lokasi</p>
-    </div>
+<div class="home">
+  <header class="home-header">
+    <h1>Katolik Indonesia</h1>
+    <p>Portal informasi Katolik di Indonesia</p>
+  </header>
 
-    <div class="search-box">
-      <div class="search-wrapper">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input type="text" id="search" placeholder="Cari nama, pastor, alamat, kota…" />
-      </div>
-    </div>
+  <nav class="menu-grid">
+    <a href="/peta" class="menu-card">
+      <span class="menu-icon">🗺️</span>
+      <span class="menu-label">Peta Gereja</span>
+      <span class="menu-desc">Temukan paroki, stasi, katedral, dan gereja Katolik di seluruh Indonesia</span>
+    </a>
+  </nav>
 
-    <!-- Radius search -->
-    <div class="radius-box">
-      <div class="radius-controls">
-        <button id="btnNearby" class="btn-nearby">📍 Cari Sekitar Saya</button>
-        <button id="btnClearNearby" class="btn-clear" style="display:none">✕</button>
-      </div>
-      <div class="radius-slider" id="radiusSlider" style="display:none">
-        <label>Radius: <strong id="radiusValue">10</strong> km</label>
-        <input type="range" id="radiusRange" min="1" max="100" value="10" step="1">
-      </div>
-      <div class="radius-info" id="radiusInfo" style="display:none"></div>
-    </div>
-
-    <div class="filters" id="filters"></div>
-
-    <div class="province-filter" id="provinceFilter">
-      <select id="filterProvince">
-        <option value="">🇮🇩 Semua Provinsi</option>
-      </select>
-    </div>
-
-    <div class="count-badge" id="count">Memuat data...</div>
-    <div class="location-list" id="list"></div>
-  </aside>
-
-  <div class="map-container">
-    <div id="map"></div>
-  </div>
+  <footer class="home-footer">
+    <p>Katolik Indonesia &copy; 2024</p>
+  </footer>
 </div>
-
-<button class="mobile-toggle" id="mobileToggle">☰ Daftar Lokasi</button>
-
-<script src="/vendor/leaflet/leaflet.js"></script>
-<script src="/js/app.js"></script>
 </body>
 </html>
